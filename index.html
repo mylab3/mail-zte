@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<title>Generatore Mail – Prescrizioni ZTE</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', Arial, sans-serif; background: #edf1f7; color: #1a1a2e; min-height: 100vh; }
+
+header {
+  background: linear-gradient(135deg, #1a3a6b 0%, #0f2447 100%);
+  color: white; padding: 18px 40px;
+  display: flex; align-items: center; gap: 14px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+header h1 { font-size: 1.2rem; font-weight: 600; }
+header p  { font-size: 0.78rem; opacity: 0.65; margin-top: 2px; }
+
+main { padding: 28px 40px; max-width: 1000px; margin: 0 auto; }
+
+.upload-area {
+  background: white; border-radius: 14px;
+  padding: 40px; text-align: center;
+  border: 2px dashed #7fa8d8;
+  margin-bottom: 24px;
+}
+.upload-area h2 { font-size: 1rem; color: #1a3a6b; margin-bottom: 16px; }
+.upload-area.drag-over { background: #f0f5ff; border-color: #1a3a6b; }
+
+.btn-upload {
+  display: inline-block;
+  background: #1a3a6b; color: white;
+  padding: 11px 28px; border-radius: 8px;
+  font-size: 0.95rem; font-weight: 600;
+  cursor: pointer; border: none; font-family: inherit;
+  transition: background 0.2s;
+}
+.btn-upload:hover { background: #122c55; }
+.drop-hint { margin-top: 14px; font-size: 0.8rem; color: #aaa; }
+
+.hidden { display: none !important; }
+.loading { text-align: center; padding: 40px; color: #888; }
+.spinner { width: 30px; height: 30px; border: 3px solid #e0e8f5; border-top-color: #1a3a6b; border-radius: 50%; animation: spin .7s linear infinite; margin: 0 auto 12px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.error-box { background: #fff0f0; border: 1px solid #f5c6c6; border-radius: 10px; padding: 14px 18px; color: #c0392b; font-size: 0.88rem; margin-bottom: 16px; }
+
+.stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; margin-bottom: 20px; }
+.stat-card { background: white; border-radius: 10px; padding: 16px 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); border-left: 4px solid #1a3a6b; }
+.stat-card .num { font-size: 2rem; font-weight: 700; color: #1a3a6b; line-height: 1; }
+.stat-card .lbl { font-size: 0.78rem; color: #888; margin-top: 4px; }
+
+.action-bar { display: flex; gap: 10px; margin-bottom: 22px; align-items: center; }
+button { padding: 9px 20px; border: none; border-radius: 8px; font-size: 0.875rem; font-family: inherit; font-weight: 500; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; gap: 7px; }
+.btn-primary   { background: #1a3a6b; color: white; }
+.btn-primary:hover { background: #122c55; }
+.btn-secondary { background: white; color: #1a3a6b; border: 1.5px solid #c8d7ee; }
+.btn-secondary:hover { background: #f0f5ff; }
+.btn-sm { padding: 6px 13px; font-size: 0.78rem; }
+.btn-outline { background: transparent; color: #1a3a6b; border: 1.5px solid #7fa8d8; }
+.btn-outline:hover { background: #eef4ff; }
+
+.info-box { background: #f0f5ff; border: 1px solid #c8d7ee; border-radius: 10px; padding: 14px 18px; font-size: 0.82rem; color: #2c4a7c; margin-bottom: 20px; line-height: 1.6; }
+.info-box strong { display: block; margin-bottom: 4px; }
+
+.section-title { font-size: 0.78rem; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: #888; margin-bottom: 12px; }
+.email-list { display: flex; flex-direction: column; gap: 10px; }
+.email-card { background: white; border-radius: 10px; padding: 18px 22px; box-shadow: 0 1px 4px rgba(0,0,0,.07); display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: center; }
+.email-meta .to-line   { font-size: .78rem; color: #888; margin-bottom: 4px; }
+.email-meta .to-line strong { color: #1a3a6b; }
+.email-meta .subject   { font-weight: 600; font-size: .92rem; margin-bottom: 8px; }
+.email-meta .intro     { font-size: .8rem; color: #555; line-height: 1.5; }
+.email-meta .intro em  { color: #1a3a6b; font-style: normal; font-weight: 500; }
+.preview-table { margin-top: 8px; display: grid; grid-template-columns: 52px 1fr; column-gap: 18px; row-gap: 1px; font-size: .8rem; font-family: 'Consolas','Courier New',monospace; background: #f8faff; border-radius: 6px; padding: 8px 12px; border: 1px solid #e4eaf5; }
+.preview-table .r-lbl { color: #888; font-weight: 600; }
+.card-buttons { display: flex; flex-direction: column; gap: 7px; align-items: flex-end; min-width: 100px; }
+
+#toast { position: fixed; bottom: 28px; right: 28px; background: #1a3a6b; color: white; padding: 12px 22px; border-radius: 10px; font-size: .88rem; font-weight: 500; box-shadow: 0 4px 16px rgba(0,0,0,.2); opacity: 0; transform: translateY(10px); transition: all .3s; pointer-events: none; z-index: 100; }
+#toast.show { opacity: 1; transform: translateY(0); }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Generatore Mail - Prescrizioni ZTE</h1>
+    <p>Mercitalia Rail - Gestione Alarm - @mercitaliarail.it</p>
+  </div>
+</header>
+
+<main>
+
+  <div class="upload-area" id="uploadArea">
+    <h2>Seleziona il file XLS da elaborare</h2>
+    <button class="btn-upload" id="btnScegli">Scegli file .xls</button>
+    <input type="file" id="fileInput" accept=".xls,.xlsx" style="display:none">
+    <p class="drop-hint">oppure trascinalo qui sopra</p>
+  </div>
+
+  <div id="errorBox" class="error-box hidden"></div>
+
+  <div id="loadingBox" class="loading hidden">
+    <div class="spinner"></div>
+    Elaborazione in corso...
+  </div>
+
+  <div id="resultsSection" class="hidden">
+
+    <div class="stats">
+      <div class="stat-card">
+        <div class="num" id="statEmail">0</div>
+        <div class="lbl">Email da inviare</div>
+      </div>
+      <div class="stat-card">
+        <div class="num" id="statAgenti">0</div>
+        <div class="lbl">Agenti unici</div>
+      </div>
+      <div class="stat-card" style="border-left-color:#e67e22">
+        <div class="num" id="statEscluse" style="color:#e67e22">0</div>
+        <div class="lbl">Escluse (commento presente)</div>
+      </div>
+    </div>
+
+    <div class="info-box">
+      <strong>Come usare i file .eml con Outlook</strong>
+      Clicca <b>Scarica ZIP</b>, estrai la cartella, seleziona tutti i file .eml e trascinali nella cartella <b>Bozze</b> di Outlook. Le email appariranno gia compilate e pronte per l'invio.
+    </div>
+
+    <div class="action-bar">
+      <button class="btn-primary" id="btnZip">Scarica tutto (.zip)</button>
+      <button class="btn-secondary" id="btnReset">Carica nuovo file</button>
+      <span id="zipProgress" class="hidden" style="font-size:.82rem;color:#888;margin-left:6px">Preparazione ZIP...</span>
+    </div>
+
+    <div class="section-title">Anteprima email generate</div>
+    <div class="email-list" id="emailList"></div>
+
+  </div>
+
+</main>
+
+<div id="toast"></div>
+
+<script>
+var emails    = [];
+var totalRows = 0;
+
+function pad(n){ return String(n).padStart(2,'0'); }
+
+function esc(s){
+  return (s||'').toString()
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+function todayStr(){
+  var d=new Date();
+  return pad(d.getDate())+'-'+pad(d.getMonth()+1)+'-'+d.getFullYear();
+}
+
+function extractNumeroTreno(val){
+  if(val===null||val===undefined||val==='') return '';
+  return Math.round(Number(val)).toString().substring(0,5);
+}
+
+function extractDataEvento(val){
+  if(!val && val!==0) return '';
+  if(val instanceof Date){
+    return pad(val.getDate())+'/'+pad(val.getMonth()+1)+'/'+val.getFullYear();
+  }
+  var s=val.toString().trim();
+  var m=s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(m) return m[3]+'/'+m[2]+'/'+m[1];
+  if(!isNaN(Number(val))){
+    var d=XLSX.SSF.parse_date_code(Number(val));
+    if(d) return pad(d.d)+'/'+pad(d.m)+'/'+d.y;
+  }
+  return s;
+}
+
+function extractNomeRotabile(val){
+  var s=(val||'').toString().trim();
+  if(s.length<12) return s;
+  return s.substring(5,9)+'.'+s.substring(9,12);
+}
+
+function extractCid(val){
+  if(val===null||val===undefined||val==='') return '';
+  return Math.round(Number(val)).toString();
+}
+
+function processRow(row){
+  var agente     = (row['Agente']      ||'').toString().trim();
+  var nomeEvento = (row['Nome_Evento'] ||'').toString().trim();
+  var cid        = extractCid(row['CID Agente']);
+  var commentoRaw= row['Commento'];
+  var commento   = (commentoRaw===null||commentoRaw===undefined) ? '' : commentoRaw.toString().trim();
+
+  if(!agente || agente==='Agente') return null;
+  if(!cid || !nomeEvento)          return null;
+  if(commento!=='' && commento!=='0') return null;
+
+  return {
+    agente:     agente,
+    to:         cid+'@mercitaliarail.it',
+    oggetto:    'Prescrizioni '+nomeEvento,
+    nomeEvento: nomeEvento,
+    numTreno:   extractNumeroTreno(row['Numero_Treno']),
+    dataEv:     extractDataEvento(row['Data_Evento']),
+    rotabile:   extractNomeRotabile(row['Nome_Rotabile']),
+    luogo:      (row['Luogo']||'').toString().trim()
+  };
+}
+
+function buildEmlContent(e){
+  var lbl = 'style="padding:3px 0;font-weight:bold;width:100px;vertical-align:top"';
+  var val = 'style="padding:3px 0;vertical-align:top"';
+  var html='<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="font-family:Calibri,Arial,sans-serif;font-size:11pt;color:#000;margin:0;padding:0">'
+    +'<p style="margin:0 0 16px 0">Cortesemente, ti chiedo di inviarmi o consegnarmi le prescrizioni inerenti l\'evento <strong>'+esc(e.nomeEvento)+'</strong> registrato sulla ZTE.</p>'
+    +'<table style="border-collapse:collapse;font-size:11pt;font-family:Calibri,Arial,sans-serif">'
+    +'<tr><td '+lbl+'><strong>Treno:</strong></td><td '+val+'>'+esc(e.numTreno)+'</td></tr>'
+    +'<tr><td '+lbl+'><strong>Del:</strong></td><td '+val+'>'+esc(e.dataEv)+'</td></tr>'
+    +'<tr><td '+lbl+'><strong>Loc:</strong></td><td '+val+'>'+esc(e.rotabile)+'</td></tr>'
+    +'<tr><td '+lbl+'><strong>A:</strong></td><td '+val+'>'+esc(e.luogo)+'</td></tr>'
+    +'</table></body></html>';
+
+  var b64  = btoa(unescape(encodeURIComponent(html)));
+  var wrap = b64.match(/.{1,76}/g).join('\r\n');
+  var subj = '=?UTF-8?B?'+btoa(unescape(encodeURIComponent(e.oggetto)))+'?=';
+
+  return 'MIME-Version: 1.0\r\nTo: '+e.to+'\r\nSubject: '+subj+'\r\nContent-Type: text/html; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\nX-Unsent: 1\r\n\r\n'+wrap;
+}
+
+function readFile(file){
+  showSection('loading');
+  var reader = new FileReader();
+  reader.onload = function(evt){
+    try{
+      var data = new Uint8Array(evt.target.result);
+      var wb   = XLSX.read(data, {type:'array', cellDates:true});
+      var ws   = wb.Sheets[wb.SheetNames[0]];
+      var rows = XLSX.utils.sheet_to_json(ws, {range:5, raw:true, defval:''});
+      var valide = rows.filter(function(r){ return (r['Agente']||'').toString().trim()!==''; });
+      totalRows  = valide.length;
+      emails     = valide.map(processRow).filter(Boolean);
+      if(totalRows===0){ showError('Nessuna riga dati trovata. Verifica il file.'); return; }
+      renderResults();
+      showSection('results');
+    }catch(err){
+      showError('Errore nella lettura: '+err.message);
+    }
+  };
+  reader.onerror = function(){ showError('Impossibile leggere il file.'); };
+  reader.readAsArrayBuffer(file);
+}
+
+function renderResults(){
+  var agentiSet = new Set(emails.map(function(e){ return e.to; }));
+  document.getElementById('statEmail').textContent   = emails.length;
+  document.getElementById('statAgenti').textContent  = agentiSet.size;
+  document.getElementById('statEscluse').textContent = totalRows - emails.length;
+
+  var html = '';
+  for(var i=0;i<emails.length;i++){
+    var e=emails[i];
+    html+='<div class="email-card">'
+      +'<div class="email-meta">'
+      +'<div class="to-line">A: <strong>'+esc(e.to)+'</strong> &nbsp;·&nbsp; '+esc(e.agente)+'</div>'
+      +'<div class="subject">'+esc(e.oggetto)+'</div>'
+      +'<div class="intro">Cortesemente, ti chiedo di inviarmi o consegnarmi le prescrizioni inerenti l\'evento <em>'+esc(e.nomeEvento)+'</em> registrato sulla ZTE.</div>'
+      +'<div class="preview-table">'
+      +'<span class="r-lbl">Treno</span><span>'+esc(e.numTreno)+'</span>'
+      +'<span class="r-lbl">Del</span><span>'+esc(e.dataEv)+'</span>'
+      +'<span class="r-lbl">Loc</span><span>'+esc(e.rotabile)+'</span>'
+      +'<span class="r-lbl">A</span><span>'+esc(e.luogo)+'</span>'
+      +'</div></div>'
+      +'<div class="card-buttons">'
+      +'<button class="btn-primary btn-sm" onclick="downloadSingleEml('+i+')">Scarica .eml</button>'
+      +'<button class="btn-outline btn-sm" onclick="openMailto('+i+')">Apri in Outlook</button>'
+      +'</div></div>';
+  }
+  document.getElementById('emailList').innerHTML = html;
+}
+
+function downloadSingleEml(i){
+  var e    = emails[i];
+  var blob = new Blob([buildEmlContent(e)], {type:'message/rfc822'});
+  var url  = URL.createObjectURL(blob);
+  var a    = document.createElement('a');
+  a.href   = url;
+  a.download = e.agente.replace(/\s+/g,'_')+'_'+e.dataEv.replace(/\//g,'-')+'_'+e.numTreno+'.eml';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('File scaricato');
+}
+
+function openMailto(i){
+  var e = emails[i];
+
+  function pad(label) {
+    return (label + '          ').substring(0, 10);
+  }
+
+  var body =
+    'Cortesemente, ti chiedo di inviarmi o consegnarmi le prescrizioni inerenti l\'evento ' + e.nomeEvento + ' registrato sulla ZTE.\r\n\r\n' +
+    pad('Treno:')+' '  + e.numTreno + '\r\n' +
+    pad('Del:')+'    ' + e.dataEv + '\r\n' +
+    pad('Loc:')+'   '  + e.rotabile + '\r\n' +
+    pad('A:')+'      '  + e.luogo;
+
+  window.location.href='mailto:'+e.to+
+    '?subject='+encodeURIComponent(e.oggetto)+
+    '&body='+encodeURIComponent(body);
+}
+
+document.getElementById('btnZip').addEventListener('click', async function(){
+  var prog=document.getElementById('zipProgress');
+  prog.classList.remove('hidden');
+  try{
+    var zip=new JSZip();
+    for(var i=0;i<emails.length;i++){
+      var e=emails[i];
+      var fname=String(i+1).padStart(3,'0')+'_'+e.agente.replace(/\s+/g,'_')+'_'+e.dataEv.replace(/\//g,'-')+'_'+e.numTreno+'.eml';
+      zip.file(fname, buildEmlContent(e));
+    }
+    var blob=await zip.generateAsync({type:'blob'});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');
+    a.href=url; a.download='prescrizioni_zte_'+todayStr()+'.zip';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('Scaricati '+emails.length+' file .eml');
+  }catch(err){ showError('Errore ZIP: '+err.message); }
+  finally{ prog.classList.add('hidden'); }
+});
+
+document.getElementById('btnReset').addEventListener('click', function(){
+  emails=[]; totalRows=0;
+  document.getElementById('fileInput').value='';
+  showSection('none');
+});
+
+document.getElementById('btnScegli').addEventListener('click', function(){
+  document.getElementById('fileInput').click();
+});
+
+document.getElementById('fileInput').addEventListener('change', function(){
+  if(this.files && this.files.length>0) readFile(this.files[0]);
+});
+
+var area=document.getElementById('uploadArea');
+area.addEventListener('dragover',  function(e){ e.preventDefault(); area.classList.add('drag-over'); });
+area.addEventListener('dragleave', function(e){ e.preventDefault(); area.classList.remove('drag-over'); });
+area.addEventListener('drop', function(e){
+  e.preventDefault(); area.classList.remove('drag-over');
+  var f=e.dataTransfer.files && e.dataTransfer.files[0];
+  if(f) readFile(f); else showError('Nessun file rilevato.');
+});
+
+function showSection(which){
+  document.getElementById('loadingBox').classList.add('hidden');
+  document.getElementById('resultsSection').classList.add('hidden');
+  document.getElementById('errorBox').classList.add('hidden');
+  if(which==='loading') document.getElementById('loadingBox').classList.remove('hidden');
+  if(which==='results') document.getElementById('resultsSection').classList.remove('hidden');
+  if(which==='error')   document.getElementById('errorBox').classList.remove('hidden');
+}
+
+function showError(msg){
+  document.getElementById('errorBox').textContent='Errore: '+msg;
+  showSection('error');
+}
+
+var toastTimer;
+function showToast(msg){
+  var t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(function(){ t.classList.remove('show'); },3000);
+}
+</script>
+</body>
+</html>
